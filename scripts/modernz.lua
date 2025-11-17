@@ -41,6 +41,7 @@ local user_opts = {
     bottomhover_zone = 130,                -- height of hover zone for bottomhover (in pixels)
     osc_on_seek = false,                   -- show OSC when seeking
     osc_on_start = false,                  -- show OSC on start of every file
+    osc_keep_with_cursor = true,           -- keep OSC visible if mouse cursor is within OSC boundaries
     mouse_seek_pause = true,               -- pause video while seeking with mouse move (on button hold)
     force_seek_tooltip = false,            -- force show seekbar tooltip on mouse drag, even if not hovering seekbar
 
@@ -513,7 +514,7 @@ local function set_osc_styles()
     osc_styles = {
         osc_fade_bg = "{\\blur" .. user_opts.fade_blur_strength .. "\\bord" .. user_opts.fade_alpha .. "\\1c&H0&\\3c&H" .. osc_color_convert(user_opts.osc_color) .. "&}",
         window_fade_bg = "{\\blur" .. user_opts.window_fade_blur_strength .. "\\bord" .. user_opts.window_fade_alpha .. "\\1c&H0&\\3c&H" .. osc_color_convert(user_opts.osc_color) .. "&}",
-        window_control = "{\\blur1\\bord0.5\\1c&H" .. osc_color_convert(user_opts.window_controls_color) .. "&\\3c&H0&\\fs25\\fn" .. iconfont .. "}",
+        window_control = "{\\blur0\\bord0\\1c&H" .. osc_color_convert(user_opts.window_controls_color) .. "&\\3c&H0&\\fs25\\fn" .. iconfont .. "}",
         window_title = "{\\blur1\\bord0.5\\1c&H" .. osc_color_convert(user_opts.window_title_color) .. "&\\3c&H0&\\fs26\\q2\\fn" .. user_opts.font .. "}",
         title = "{\\blur1\\bord0.5\\1c&H" .. osc_color_convert(user_opts.title_color) .. "&\\3c&H0&\\fs".. user_opts.title_font_size .."\\q2\\fn" .. user_opts.font .. "}",
         chapter_title = "{\\blur0\\bord0\\1c&H" .. osc_color_convert(user_opts.chapter_title_color) .. "&\\3c&H0&\\fs" .. user_opts.chapter_title_font_size .. "\\fn" .. user_opts.font .. "}",
@@ -3242,7 +3243,7 @@ local function render()
             state.input_enabled = state.osc_visible
         end
 
-        if mouse_hit_coords(cords.x1, cords.y1, cords.x2, cords.y2) then
+        if mouse_hit_coords(cords.x1, cords.y1, cords.x2, cords.y2) and user_opts.osc_keep_with_cursor then
             mouse_over_osc = true
         end
     end
@@ -3256,7 +3257,7 @@ local function render()
                 mp.disable_key_bindings("window-controls")
             end
 
-            if mouse_hit_coords(cords.x1, cords.y1, cords.x2, cords.y2) then
+            if mouse_hit_coords(cords.x1, cords.y1, cords.x2, cords.y2) and user_opts.osc_keep_with_cursor then
                 mouse_over_osc = true
             end
         end
@@ -3276,7 +3277,7 @@ local function render()
                 state.windowcontrols_title = state.osc_visible
             end
 
-            if mouse_hit_coords(cords.x1, cords.y1, cords.x2, cords.y2) then
+            if mouse_hit_coords(cords.x1, cords.y1, cords.x2, cords.y2) and user_opts.osc_keep_with_cursor then
                 mouse_over_osc = true
             end
         end

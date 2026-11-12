@@ -34,7 +34,7 @@ g.state.keybinds = {
     {'Shift+PGUP',  'list_top',         function() cursor.scroll(-math.huge) end},
     {'HOME',        'goto_current',     movement.goto_current_dir},
     {'Shift+HOME',  'goto_root',        movement.goto_root},
-    {'Ctrl+r',      'reload',           scanning.rescan},
+    {'Ctrl+r',      'reload',           function() scanning.rescan() end},
     {'s',           'select_mode',      cursor.toggle_select_mode},
     {'S',           'select_item',      cursor.toggle_selection},
     {'Ctrl+a',      'select_all',       cursor.select_all}
@@ -304,44 +304,44 @@ end
 ---Loading the custom keybinds.
 ---Can either load keybinds from the config file, from addons, or from both.
 local function setup_keybinds()
-    if not o.custom_keybinds and not o.addons then return end
-
     --this is to make the default keybinds compatible with passthrough from custom keybinds
     for _, keybind in ipairs(g.state.keybinds) do
         top_level_keys[keybind[1]] = { key = keybind[1], name = keybind[2], command = keybind[3], flags = keybind[4] }
     end
 
     --this loads keybinds from addons
-    if o.addons then
-        for i = #g.parsers, 1, -1 do
-            local parser = g.parsers[i]
-            if parser.keybinds then
-                for i, keybind in ipairs(parser.keybinds) do
-                    --if addons use the native array command format, then we need to convert them over to the custom command format
-                    if not keybind.key then keybind = { key = keybind[1], name = keybind[2], command = keybind[3], flags = keybind[4] }
-                    else keybind = fb_utils.copy_table(keybind) end
+    for i = #g.parsers, 1, -1 do
+        local parser = g.parsers[i]
+        if parser.keybinds then
+            for j, keybind in ipairs(parser.keybinds) do
+                --if addons use the native array command format, then we need to convert them over to the custom command format
+                if not keybind.key then keybind = { key = keybind[1], name = keybind[2], command = keybind[3], flags = keybind[4] }
+                else keybind = fb_utils.copy_table(keybind) end
 
-                    keybind.name = g.parsers[parser].id.."/"..(keybind.name or tostring(i))
-                    keybind.addon = true
-                    insert_custom_keybind(keybind)
-                end
+                keybind.name = g.parsers[parser].id.."/"..(keybind.name or tostring(j))
+                keybind.addon = true
+                insert_custom_keybind(keybind)
             end
         end
     end
 
     --loads custom keybinds from file-browser-keybinds.json
     if o.custom_keybinds then
-        local path = mp.command_native({"expand-path", "~~/script-opts/file-browser-keybinds.json"}) --[[@as string]]
+        local path = mp.command_native({"expand-path", o.custom_keybinds_file}) --[[@as string]]
         local custom_keybinds, err = io.open( path )
-        if not custom_keybinds then return error(err) end
+        if not custom_keybinds then
+            msg.debug(err)
+            msg.verbose('could not read custom keybind file', path)
+            return
+        end
 
         local json = custom_keybinds:read("*a")
         custom_keybinds:close()
 
-        json = utils.parse_json(json)
-        if not json then return error("invalid json syntax for "..path) end
+        local keybinds = utils.parse_json(json) --[[@as KeybindList]]
+        if not keybinds then return error("invalid json syntax for "..path) end
 
-        for i, keybind in ipairs(json --[[@as KeybindList]]) do
+        for i, keybind in ipairs(keybinds) do
             keybind.name = "custom/"..(keybind.name or tostring(i))
             insert_custom_keybind(keybind)
         end

@@ -1,0 +1,33 @@
+{
+    "runtime.version": "LuaJIT",
+    "runtime.path": [
+        "?.lua",
+        "?/init.lua",
+        "../../script-modules/?.lua"
+    ],
+    "diagnostics.workspaceDelay": 1000,
+    "diagnostics.groupFileStatus": {
+        "await": "Any",
+        "conventions": "Any",
+        "duplicate": "Any",
+        "luadoc": "Any",
+        "redefined": "Any",
+        "strict": "Any",
+        "strong": "Any",
+        "type-check": "Any",
+        "unbalanced": "Any",
+        "unused": "Opened"
+    },
+    "diagnostics.groupSeverity": {
+        "await": "Warning",
+        "conventions": "Information",
+        "duplicate": "Warning",
+        "luadoc": "Warning",
+        "redefined": "Warning",
+        "strict": "Error",
+        "strong": "Error",
+        "type-check": "Error",
+        "unbalanced": "Error",
+        "unused": "Hint"
+    }
+}

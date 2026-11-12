@@ -11,6 +11,10 @@ local state = g.state
 local style = g.style
 local ass = g.ass
 
+--- https://www.unicode.org/reports/tr9/#Explicit_Directional_Isolates
+local ISOLATE_DIRECTION_START = '\226\129\168' -- U+2068 FIRST STRONG ISOLATE
+local ISOLATE_DIRECTION_END = '\226\129\169' -- U+2069 POP DIRECTIONAL ISOLATE
+
 local function draw()
     ass:update()
 end
@@ -59,38 +63,29 @@ local function highlight_entry(v)
     end
 end
 
----@type table<string,string>
-local ass_cache = setmetatable({}, {__mode = 'k'})
+---Escapes unwanted unicode control characters that may affect the rest of the display.
+---Currently this only isolates unicode directional overrides.
+---Based on: https://github.com/mpv-player/mpv/pull/17606
+---@param str string
+---@return string
+local function unicode_escape(str)
+    return ISOLATE_DIRECTION_START..str..ISOLATE_DIRECTION_END
+end
 
 ---escape ass values and replace newlines
 ---@param str string
+---@param style_reset string?
 ---@return string
-local function ass_escape(str)
-    if ass_cache[str] then return ass_cache[str] end
-    local escaped = fb_utils.ass_escape(str, true)
-    ass_cache[str] = escaped
-    return escaped
+local function ass_escape(str, style_reset)
+    return fb_utils.ass_escape(str, style_reset and style.warning..'␊'..style_reset or true)
 end
 
---refreshes the ass text using the contents of the list
-local function update_ass()
-    if state.hidden then state.flag_update = true ; return end
+local header_overrides = {['^'] = style.header}
 
-    append(style.global)
-
-    local dir_name = state.directory_label or state.directory
-    if dir_name == "" then dir_name = "ROOT" end
-    append(style.header)
-    append(fb_utils.substitute_codes(o.format_string_header, nil, nil, nil, ass_escape))
-    newline()
-
-    if #state.list < 1 then
-        append(state.empty_text)
-        flush_buffer()
-        draw()
-        return
-    end
-
+---@return number start
+---@return number finish
+---@return boolean is_overflowing
+local function calculate_view_window()
     ---@type number
     local start = 1
     ---@type number
@@ -117,60 +112,117 @@ local function update_ass()
     --this is necessary when the number of items in the dir is less than the max
     if not overflow then finish = #state.list end
 
+    return start, finish, overflow
+end
+
+---@param i number index
+---@return string
+local function calculate_item_style(i)
+    local is_playing_file = highlight_entry(state.list[i])
+
+    --sets the selection colour scheme
+    local multiselected = state.selection[i]
+
+    --sets the colour for the item
+    local item_style = style.body
+
+    if multiselected then item_style = item_style..style.multiselect
+    elseif i == state.selected then item_style = item_style..style.selected end
+
+    if is_playing_file then item_style = item_style..(multiselected and style.playing_selected or style.playing) end
+
+    return item_style
+end
+
+local function draw_header()
+    append(style.header)
+    append(fb_utils.substitute_codes(o.format_string_header, header_overrides, nil, nil, function(str, code)
+        if code == '^' then return str end
+        return ass_escape(str, style.header)
+    end))
+    newline()
+end
+
+---@param wrapper_overrides ReplacerTable
+local function draw_top_wrapper(wrapper_overrides)
+    --adding a header to show there are items above in the list
+    append(style.footer_header)
+    append(fb_utils.substitute_codes(o.format_string_topwrapper, wrapper_overrides, nil, nil, function(str)
+        return ass_escape(str)
+    end))
+    newline()
+end
+
+---@param wrapper_overrides ReplacerTable
+local function draw_bottom_wrapper(wrapper_overrides)
+    append(style.footer_header)
+    append(fb_utils.substitute_codes(o.format_string_bottomwrapper, wrapper_overrides, nil, nil, function(str)
+        return ass_escape(str)
+    end))
+end
+
+---@param i number index
+---@param cursor string
+local function draw_cursor(i, cursor)
+    --handles custom styles for different entries
+    if i == state.selected or i == state.multiselect_start then
+        if not (i == state.selected) then append(style.selection_marker) end
+
+        if not state.multiselect_start then append(style.cursor)
+        else
+            if state.selection[state.multiselect_start] then append(style.cursor_select)
+            else append(style.cursor_deselect) end
+        end
+    else
+        append(g.style.indent)
+    end
+    append(cursor, '\\h', style.body)
+end
+
+--refreshes the ass text using the contents of the list
+local function update_ass()
+    if state.hidden then state.flag_update = true ; return end
+
+    append(style.global)
+    draw_header()
+
+    if #state.list < 1 then
+        append(state.empty_text)
+        flush_buffer()
+        draw()
+        return
+    end
+
+    local start, finish, overflow = calculate_view_window()
+
     -- these are the number values to place into the wrappers
     local wrapper_overrides = {['<'] = tostring(start-1), ['>'] = tostring(#state.list-finish)}
-
-    --adding a header to show there are items above in the list
     if o.format_string_topwrapper ~= '' and start > 1 then
-        append(style.footer_header, fb_utils.substitute_codes(o.format_string_topwrapper, wrapper_overrides, nil, nil, ass_escape))
-        newline()
+        draw_top_wrapper(wrapper_overrides)
     end
 
     for i=start, finish do
         local v = state.list[i]
-        local playing_file = highlight_entry(v)
         append(style.body)
+        if g.ALIGN_X ~= 'right' then draw_cursor(i, o.cursor_icon) end
 
-        --handles custom styles for different entries
-        if i == state.selected or i == state.multiselect_start then
-            if not (i == state.selected) then append(style.selection_marker) end
-
-            if not state.multiselect_start then append(style.cursor)
-            else
-                if state.selection[state.multiselect_start] then append(style.cursor_select)
-                else append(style.cursor_deselect) end
-            end
-            append(o.cursor_icon, "\\h", style.body)
-        else
-            append(g.style.indent, o.cursor_icon, "\\h", style.body)
-        end
-
-        --sets the selection colour scheme
-        local multiselected = state.selection[i]
-
-        --sets the colour for the item
-        local function set_colour()
-            if multiselected then append(style.multiselect)
-            elseif i == state.selected then append(style.selected) end
-
-            if playing_file then append( multiselected and style.playing_selected or style.playing) end
-        end
-        set_colour()
+        local item_style = calculate_item_style(i)
+        append(item_style)
 
         --sets the folder icon
         if v.type == 'dir' then
             append(style.folder, o.folder_icon, "\\h", style.body)
-            set_colour()
+            append(item_style)
         end
 
         --adds the actual name of the item
-        append(v.ass or ass_escape(v.label or v.name))
+        append(v.ass or ass_escape( unicode_escape(v.label or v.name) , item_style), '\\h')
+        if g.ALIGN_X == 'right' then draw_cursor(i, o.cursor_icon_flipped) end
         newline()
     end
 
     if o.format_string_bottomwrapper ~= '' and overflow then
-        append(style.footer_header)
-        append(fb_utils.substitute_codes(o.format_string_bottomwrapper, wrapper_overrides, nil, nil, ass_escape))
+        draw_bottom_wrapper(wrapper_overrides)
     end
 
     flush_buffer()

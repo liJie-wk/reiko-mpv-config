@@ -22,8 +22,9 @@ if not globals.PLATFORM then
         globals.PLATFORM = 'windows'
     elseif mp.get_property_native('options/macos-force-dedicated-gpu', _) ~= _ then
         globals.PLATFORM = 'darwin'
+    else
+        globals.PLATFORM = 'other'
     end
-    return 'other'
 end
 
 --the osd_overlay API was not added until v0.31. The expand-path command was not added until 0.30
@@ -34,8 +35,19 @@ globals.ass.res_y = 720 / o.scaling_factor_base
 
 local BASE_FONT_SIZE = 25
 
+--force file-browser to use a specific text alignment (default: top-left)
+--uses ass tag alignment numbers: https://aegi.vmoe.info/docs/3.0/ASS_Tags/#index23h3
+globals.ASS_ALIGNMENT_MATRIX = {
+    top =       {left = 7, center = 8, right = 9},
+    center =    {left = 4, center = 5, right = 6},
+    bottom =    {left = 1, center = 2, right = 3},
+}
+
+globals.ALIGN_X = o.align_x == 'auto' and mp.get_property('osd-align-x', 'left') or o.align_x
+globals.ALIGN_Y = o.align_y == 'auto' and mp.get_property('osd-align-y', 'top') or o.align_y
+
 globals.style = {
-    global = o.alignment == 0 and "" or ([[{\an%d}]]):format(o.alignment),
+    global = ([[{\an%d}]]):format(globals.ASS_ALIGNMENT_MATRIX[globals.ALIGN_Y][globals.ALIGN_X]),
 
     -- full line styles
     header = ([[{\r\q2\b%s\fs%d\fn%s\c&H%s&}]]):format((o.font_bold_header and "1" or "0"), o.scaling_factor_header*BASE_FONT_SIZE, o.font_name_header, o.font_colour_header),
@@ -47,6 +59,7 @@ globals.style = {
     selected = ([[{\c&H%s&}]]):format(o.font_colour_selected),
     playing = ([[{\c&H%s&}]]):format(o.font_colour_playing),
     playing_selected = ([[{\c&H%s&}]]):format(o.font_colour_playing_multiselected),
+    warning = ([[{\c&H%s&}]]):format(o.font_colour_escape_chars),
 
     --icon styles
     indent = ([[{\alpha&H%s}]]):format('ff'),
@@ -106,14 +119,15 @@ globals.audio_extensions = {}
 ---@type Set<string>
 globals.parseable_extensions = {}
 
----This table contains mappings to convert external directories to cannonical
+---This table contains path substitutions for converting external paths to canonical
 --locations within the file-browser file tree. The keys of the table are Lua
---patterns used to evaluate external directory paths. The value is the path
---that should replace the part of the path than matched the pattern.
---These mappings should only applied at the edges where external paths are
+--patterns used to evaluate external paths. Each value contains either a replacement string,
+-- or a function that takes a path and returns a replacement string.
+--These mappings should only be applied at the edges where external paths are
 --ingested by file-browser.
----@type table<string,string>
-globals.directory_mappings = {}
+---@alias PathSubstitution string|(fun(path: string): string|nil)
+---@type table<string,PathSubstitution>
+globals.path_substitutions = {}
 
 ---@class CurrentFile
 ---@field directory string?
@@ -137,6 +151,14 @@ globals.root = {}
 globals.history = {
     list = {},
     size = 0,
+    position = 0,
+}
+
+---@class (strict) DirectoryStack
+---@field stack string[]
+---@field position number
+globals.directory_stack = {
+    stack = {},
     position = 0,
 }
 
